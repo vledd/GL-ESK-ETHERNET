@@ -10,7 +10,7 @@
 #endif
 
 #ifndef SERVER
-#define SERVER 	"192.168.0.101"
+#define SERVER 	"210.10.10.2"
 #endif
 
 typedef enum
