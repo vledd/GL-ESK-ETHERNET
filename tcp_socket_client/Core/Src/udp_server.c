@@ -88,7 +88,7 @@ void StartUdpServerTask(void const * argument)
 
 		if (strcmp(parts[0], "exit") == 0)
 		{
-			sendto(socket_fd, "Session was successfully terminated\n", strlen("Session was successfully terminated\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
+			sendto(socket_fd, "Terminated\n", strlen("Terminated\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
 			clear(buffer, buf_len);
 			break;
 		}
