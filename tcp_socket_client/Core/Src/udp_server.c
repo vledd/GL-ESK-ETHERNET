@@ -126,14 +126,14 @@ void StartUdpServerTask(void const * argument)
 			Led_TypeDef led[4] = {LED3, LED4, LED5, LED6};
 
 			GPIO_TypeDef* GPIO_PORT[LEDn] = {LED3_GPIO_PORT,
-											 LED4_GPIO_PORT,
-			                                 LED5_GPIO_PORT,
-			                                 LED6_GPIO_PORT};
+											LED4_GPIO_PORT,
+											LED5_GPIO_PORT,
+											LED6_GPIO_PORT};
 
 			const uint16_t GPIO_PIN[LEDn] = {LED3_PIN,
-											 LED4_PIN,
-			                                 LED5_PIN,
-			                                 LED6_PIN};
+											LED4_PIN,
+											LED5_PIN,
+											LED6_PIN};
 
 			printf("DEBUG: LED command found. LED given: %d\n", led_no);
 
