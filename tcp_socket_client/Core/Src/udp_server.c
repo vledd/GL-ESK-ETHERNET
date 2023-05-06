@@ -113,7 +113,7 @@ void StartUdpServerTask(void const * argument)
         }
 
         // Check if it is a "sversion" command
-        if (strcmp(tokens[0], "sversion") == 0)
+        if (strncmp(tokens[0], "sversion", strlen("sversion")) == 0)
         {
             printf("DEBUG: Asked for status\n");
             sendto(sockfd, status_info, strlen(status_info), 0, (struct sockaddr *)&client_addr, client_len);
@@ -144,28 +144,28 @@ void StartUdpServerTask(void const * argument)
                 continue;
             }
 
-            if (strcmp(tokens[1], "on") == 0)
+            if (strncmp(tokens[1], "on", strlen("on")) == 0)
             {
                 printf("ON cmd for led%d\n", led_no);
                 BSP_LED_On(led[led_no-LED_OFFSET]);
                 sendto(sockfd, "OK\r\n", strlen("OK\r\n"), 0, (struct sockaddr *)&client_addr, client_len);
                 continue;
             }
-            else if (strcmp(tokens[1], "off") == 0)
+            else if (strncmp(tokens[1], "off", strlen("off")) == 0)
             {
                 printf("OFF cmd for led%d\n", led_no);
                 BSP_LED_Off(led[led_no-LED_OFFSET]);
                 sendto(sockfd, "OK\r\n", strlen("OK\r\n"), 0, (struct sockaddr *)&client_addr, client_len);
                 continue;
             }
-            else if (strcmp(tokens[1], "toggle") == 0)
+            else if (strncmp(tokens[1], "toggle", strlen("toggle")) == 0)
             {
                 printf("TOGGLE cmd for led%d\n", led_no);
                 BSP_LED_Toggle(led[led_no-LED_OFFSET]);
                 sendto(sockfd, "OK\r\n", strlen("OK\r\n"), 0, (struct sockaddr *)&client_addr, client_len);
                 continue;
             }
-            else if (strcmp(tokens[1], "status") == 0)
+            else if (strncmp(tokens[1], "status", strlen("status")) == 0)
             {
                 char tosend[MAX_STRING_SIZE] = { 0, };
                 uint8_t wrt_size = 0;
