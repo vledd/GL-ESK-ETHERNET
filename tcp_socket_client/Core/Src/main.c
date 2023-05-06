@@ -334,6 +334,9 @@ int main(void)
   osThreadDef(tcpServerTask, StartTcpServerTask, osPriorityNormal, 0, 2048);
   tcpServerTaskHandle = osThreadCreate(osThread(tcpServerTask), NULL);
 
+  osThreadDef(udpServerTask, StartUdpServerTask, osPriorityNormal, 0, 2048);
+  udpServerTaskHandle = osThreadCreate(osThread(udpServerTask), NULL);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */

@@ -1,295 +1,201 @@
-#include "simple_http_server.h"
+#include "stdio.h"
+#include "stdlib.h"
+//#include <stdint.h>
+//#include <stdbool.h>
+#include "string.h"
+//#include <unistd.h>
+#include "sys/types.h"
+#include "sys/socket.h"
 #include "main.h"
-#include "lwip.h"
-#include "sockets.h"
 #include "cmsis_os.h"
-#include <string.h>
 
-#define PORTNUM 5678U
-#define VERSION "udp_server_Vladyslav_Nechaiev_21042023\n"
+#define PORT 5678U
+#define BUFFER_SIZE 1024
+#define LED_OFFSET 3
+#define ASCII_NULL_OFFSET 48
+#define MAX_STRING_SIZE 24
+#define MAX_TOKENS_NO 2
 
-#if (USE_UDP_SERVER_PRINTF == 1)
-#include <stdio.h>
-#define UDP_SERVER_PRINTF(...) do { printf("[udp_server.c: %s: %d]: ",__func__, __LINE__);printf(__VA_ARGS__); } while (0)
-#else
-#define UDP_SERVER_PRINTF(...)
-#endif
 
-static struct sockaddr_in serv_addr, client_addr;
-static int socket_fd;
-static uint16_t nport;
+// Socket descriptor
+int sockfd;
+// Socket structs
+struct sockaddr_in server_addr = { 0, };
+struct sockaddr_in client_addr = { 0, };
+socklen_t client_len;
+char* buffer = NULL;
+char tokens[MAX_TOKENS_NO][MAX_STRING_SIZE] = { 0, };
+const char status_info[] = "udp_srv_vladyslav_nechaiev_06052023\r\n";
 
-void clear(char buffer[], size_t n)
+static int init_udp_server(void)
 {
-	for (uint32_t i = 0; i < n; i++)
-		{buffer[i] = '\0';}
-}
-static int udpServerInit(void)
-{
-	socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (socket_fd == -1) {
-		UDP_SERVER_PRINTF("socket() error\n");
+	buffer = (char*)calloc(BUFFER_SIZE, 1);
+	// Try to initialize socket
+	// AF == IPv4 pool, DGRAM == UDP, 0 - automatic mode
+	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+
+	// In case of errors brk
+	if (sockfd < 0)
+	{
+		printf("Error creating socket\n");
 		return -1;
 	}
 
-	nport = PORTNUM;
-	nport = htons((uint16_t)nport);
+	// Configure server address
+	server_addr.sin_family = AF_INET; // IPv4 pool
+	server_addr.sin_addr.s_addr = INADDR_ANY; // Any address free
+	server_addr.sin_port = htons(PORT);
 
-	bzero(&serv_addr, sizeof(serv_addr));
-
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_addr.s_addr = INADDR_ANY;
-	serv_addr.sin_port = nport;
-
-	if(bind(socket_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr))==-1) {
-		UDP_SERVER_PRINTF("bind() error\n");
-		close(socket_fd);
+	// Bind socket to struct params and check for errors
+	if (bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+		printf("Error binding socket\n");
 		return -1;
 	}
 
-	UDP_SERVER_PRINTF("Server is ready\n");
-
+	printf("UDP Started on %d\n", PORT);
 	return 0;
 }
 
 void StartUdpServerTask(void const * argument)
 {
 	osDelay(5000);
-	if(udpServerInit() < 0) {
-		UDP_SERVER_PRINTF("udpSocketServerInit() error\n");
-		osThreadTerminate(NULL);
+
+	if(init_udp_server() < 0) {
+		printf("UDP Init ERR\n");
+		return;
 	}
 
-	for(;;)
-	{
-	  bzero(&client_addr, sizeof(client_addr));
+	while (1) {
+		// Recv data from test suite
+		client_len = sizeof(client_addr);
+		uint8_t tok_qty = 0; // accumulates amount of tokens
+		memset(tokens, 0, sizeof(tokens));
+		memset(buffer, 0, BUFFER_SIZE);
 
-	  int nbytes;
-	  const size_t buf_len=256;
-	  size_t buf_cmd_len = 0;
-	  char buffer[buf_len];
-		for (uint32_t i=0; i<buf_len; i++)
-			{buffer[i]='\0';}
-	  memset(buffer, 8, buf_len);
-	  socklen_t addrlen = sizeof(client_addr);
+		ssize_t received_bytes = recvfrom(sockfd, buffer, BUFFER_SIZE - 1, 0, (struct sockaddr *)&client_addr, &client_len);
 
-	  while ( (nbytes = recvfrom(socket_fd, buffer, (size_t)sizeof(buffer),
-			  0, (struct sockaddr *)&client_addr, (socklen_t*)&addrlen)) > 0 )
-	  {
-		 buf_cmd_len = strlen(buffer);
-		 buffer[buf_cmd_len] = '\0';
-		 char* parts[2];
-		 uint8_t part_index = 0;
-		 parts[part_index] = strtok((char*) buffer, " ");
-		 while (parts[part_index] != NULL && part_index < 1)
-		 {
-			 parts[++part_index] = strtok(NULL, " ");
-		 }
+		// Get tokens
+		char* ptr = strtok(buffer, " ");
 
-		if (strcmp(parts[0], "exit") == 0)
+		while (ptr != NULL)
 		{
-			sendto(socket_fd, "Terminated\n", strlen("Terminated\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-			clear(buffer, buf_len);
-			break;
+			printf("DEBUG: %d: %s\n", tok_qty, ptr);
+			memcpy(tokens[tok_qty], ptr, strlen(ptr));
+			ptr = strtok(NULL, " ");
+			tok_qty++;
 		}
 
-		else if (strcmp(parts[0], "sversion") == 0)
-		{
-			sendto(socket_fd, VERSION, strlen(VERSION), 0, (const struct sockaddr*)&client_addr, addrlen);
-			sendto(socket_fd, "OK\n", strlen("OK\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-			clear(buffer, buf_len);
-		    continue;
+		// Check for blank data
+		if (received_bytes < 0) {
+			printf("Error receiving data");
+			return;
 		}
 
-		else if (strcmp(parts[1], "on") == 0)
+		// buffer[received_bytes] = '\0';
+		printf("DEBUG: Got %d\n", received_bytes);
+		printf("DEBUGSTRING: Got: %s\n", buffer);
+		printf("DEBUG: Got %d tokens\n", tok_qty);
+
+		// Check that at least smth was sent
+		if (received_bytes < 2)
 		{
-			if (strcmp(parts[0], "led3") == 0)
-			{
-				HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
-				sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				clear(buffer, buf_len);
-				continue;
-			}
-
-			else if (strcmp(parts[0], "led4") == 0)
-			{
-				HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
-				sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				clear(buffer, buf_len);
-				continue;
-			}
-
-			else if (strcmp(parts[0], "led5") == 0)
-			{
-				HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
-				sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				clear(buffer, buf_len);
-				continue;
-			}
-
-			else if (strcmp(parts[0], "led6") == 0)
-			{
-				HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_SET);
-				sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				clear(buffer, buf_len);
-				continue;
-			}
+			printf("DEBUG: Nothing was sent!\n");
+			sendto(sockfd, "ERROR\r\n", strlen("ERROR\r\n"), 0, (struct sockaddr *)&client_addr, client_len);
+			continue;
 		}
 
-		else if (strcmp(parts[1], "off") == 0)
+		// We know that max. 2 ars will be sent here so check for overflow (can be omitted)
+		if (tok_qty > 3)
 		{
-			if (strcmp(parts[0], "led3") == 0)
-			{
-				HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
-				sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				clear(buffer, buf_len);
-				continue;
-			}
-
-			else if (strcmp(parts[0], "led4") == 0)
-			{
-				HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET);
-				sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				clear(buffer, buf_len);
-				continue;
-			}
-
-			else if (strcmp(parts[0], "led5") == 0)
-			{
-				HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
-				sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				clear(buffer, buf_len);
-				continue;
-			}
-
-			else if (strcmp(parts[0], "led6") == 0)
-			{
-				HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET);
-				sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				clear(buffer, buf_len);
-				continue;
-			}
+			printf("DEBUG: Too much args!\n");
+			sendto(sockfd, "ERROR\r\n", strlen("ERROR\r\n"), 0, (struct sockaddr *)&client_addr, client_len);
+			continue;
 		}
 
-		else if (strcmp(parts[1], "toggle") == 0)
+		// Check if it is a "sversion" command
+		if (strcmp(tokens[0], "sversion") == 0)
 		{
-			if (strcmp(parts[0], "led3") == 0)
-			{
-				HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_13);
-				sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				clear(buffer, buf_len);
-				continue;
-			}
-
-			else if (strcmp(parts[0], "led4") == 0)
-			{
-				HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12);
-				sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				clear(buffer, buf_len);
-				continue;
-			}
-
-			else if (strcmp(parts[0], "led5") == 0)
-			{
-				HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
-				sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				clear(buffer, buf_len);
-				continue;
-			}
-
-			else if (strcmp(parts[0], "led6") == 0)
-			{
-				HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
-				sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				clear(buffer, buf_len);
-				continue;
-			}
+			printf("DEBUG: Asked for status\n");
+			sendto(sockfd, status_info, strlen(status_info), 0, (struct sockaddr *)&client_addr, client_len);
+			continue;
 		}
 
-		else if (strcmp(parts[1], "status") == 0)
+		if (memcmp(tokens[0], "led", 3) == 0)
 		{
-			if (strcmp(parts[0], "led3") == 0)
+			uint8_t led_no = strlen(tokens[0]) == 4 ? tokens[0][3] - ASCII_NULL_OFFSET: 0;
+			Led_TypeDef led[4] = {LED3, LED4, LED5, LED6};
+
+			GPIO_TypeDef* GPIO_PORT[LEDn] = {LED3_GPIO_PORT,
+											 LED4_GPIO_PORT,
+			                                 LED5_GPIO_PORT,
+			                                 LED6_GPIO_PORT};
+
+			const uint16_t GPIO_PIN[LEDn] = {LED3_PIN,
+											 LED4_PIN,
+			                                 LED5_PIN,
+			                                 LED6_PIN};
+
+			printf("DEBUG: LED command found. LED given: %d\n", led_no);
+
+			if ((led_no < 3) || (led_no > 6))
 			{
-				GPIO_PinState pinState = HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_13);
-				if (pinState==GPIO_PIN_SET)
-				{
-					sendto(socket_fd, "LED3 ON\r\n", strlen("LED3 ON\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-					sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				}
-				else if (pinState==GPIO_PIN_RESET)
-				{
-					sendto(socket_fd, "LED3 OFF\r\n", strlen("LED3 OFF\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-					sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				}
-				clear(buffer, buf_len);
+				printf("INCORRECT LED\n");
+				sendto(sockfd, "ERROR\r\n", strlen("ERROR\r\n"), 0, (struct sockaddr *)&client_addr, client_len);
 				continue;
 			}
 
-			else if (strcmp(parts[0], "led4") == 0)
+			if (strcmp(tokens[1], "on") == 0)
 			{
-				GPIO_PinState pinState = HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_12);
-				if (pinState==GPIO_PIN_SET)
+				printf("ON cmd for led%d\n", led_no);
+				BSP_LED_On(led[led_no-LED_OFFSET]);
+				sendto(sockfd, "OK\r\n", strlen("OK\r\n"), 0, (struct sockaddr *)&client_addr, client_len);
+				continue;
+			}
+			else if (strcmp(tokens[1], "off") == 0)
+			{
+				printf("OFF cmd for led%d\n", led_no);
+				BSP_LED_Off(led[led_no-LED_OFFSET]);
+				sendto(sockfd, "OK\r\n", strlen("OK\r\n"), 0, (struct sockaddr *)&client_addr, client_len);
+				continue;
+			}
+			else if (strcmp(tokens[1], "toggle") == 0)
+			{
+				printf("TOGGLE cmd for led%d\n", led_no);
+				BSP_LED_Toggle(led[led_no-LED_OFFSET]);
+				sendto(sockfd, "OK\r\n", strlen("OK\r\n"), 0, (struct sockaddr *)&client_addr, client_len);
+				continue;
+			}
+			else if (strcmp(tokens[1], "status") == 0)
+			{
+				char tosend[MAX_STRING_SIZE] = { 0, };
+				uint8_t wrt_size = 0;
+				printf("STATUS cmd for led%d\n", led_no);
+
+				switch (HAL_GPIO_ReadPin(GPIO_PORT[led_no-LED_OFFSET], GPIO_PIN[led_no-LED_OFFSET]))
 				{
-					sendto(socket_fd, "LED4 ON\r\n", strlen("LED4 ON\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-					sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
+					case false:
+						wrt_size = snprintf(tosend, 0, "LED%d OFF\r\n", led_no);
+						snprintf(tosend, wrt_size + 1U, "LED%d OFF\r\n", led_no);
+						break;
+					case true:
+						wrt_size = snprintf(tosend, 0, "LED%d ON\r\n", led_no);
+						snprintf(tosend, wrt_size + 1U, "LED%d ON\r\n", led_no);
+						break;
 				}
-				else if (pinState==GPIO_PIN_RESET)
-				{
-					sendto(socket_fd, "LED4 OFF\r\n", strlen("LED4 OFF\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-					sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				}
-				clear(buffer, buf_len);
+				sendto(sockfd, tosend, wrt_size, 0, (struct sockaddr *)&client_addr, client_len);
+				sendto(sockfd, "OK\r\n", strlen("OK\r\n"), 0, (struct sockaddr *)&client_addr, client_len);
+				continue;
+			}
+			else
+			{
+				printf("UNKNOWN cmd\n");
+				sendto(sockfd, "ERROR\r\n", strlen("ERROR\r\n"), 0, (struct sockaddr *)&client_addr, client_len);
 				continue;
 			}
 
-			else if (strcmp(parts[0], "led5") == 0)
-			{
-				GPIO_PinState pinState = HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_14);
-				if (pinState==GPIO_PIN_SET)
-				{
-					sendto(socket_fd, "LED5 ON\r\n", strlen("LED5 ON\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-					sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				}
-				else if (pinState==GPIO_PIN_RESET)
-				{
-					sendto(socket_fd, "LED5 OFF\r\n", strlen("LED5 OFF\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-					sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				}
-				clear(buffer, buf_len);
-				continue;
-			}
-
-			else if (strcmp(parts[0], "led6") == 0)
-			{
-				GPIO_PinState pinState = HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_15);
-				if (pinState==GPIO_PIN_SET)
-				{
-					sendto(socket_fd, "LED6 ON\r\n", strlen("LED6 ON\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-					sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				}
-				else if (pinState==GPIO_PIN_RESET)
-				{
-					sendto(socket_fd, "LED6 OFF\r\n", strlen("LED6 OFF\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-					sendto(socket_fd, "OK\r\n", strlen("OK\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-				}
-				clear(buffer, buf_len);
-				continue;
-			}
 		}
-
-		else
-		{
-			sendto(socket_fd, "ERROR\r\n", strlen("ERROR\r\n"), 0, (const struct sockaddr*)&client_addr, addrlen);
-			clear(buffer, buf_len);
-		}
-
-		if (sendto(socket_fd, buffer, nbytes, 0, (const struct sockaddr*)&client_addr, addrlen) < 0)
-		{
-			UDP_SERVER_PRINTF("send() error\n");
-			clear(buffer, buf_len);
-		}
-
-	  }
-			close(socket_fd);
 	}
+	free(buffer);
+	close(sockfd);
+	osThreadTerminate(NULL);
 }
